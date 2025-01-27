@@ -1,0 +1,3 @@
+[workspace]
+members = [ "crisprme", "crisprme-cuda" ]
+resolver = "2"

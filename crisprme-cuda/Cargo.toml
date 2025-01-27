@@ -1,0 +1,13 @@
+[package]
+name = "crisprme-cuda"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+bindgen = "0.66.1"
+cc = "1.0.82"
+regex = "1.9.3"
+
+[dependencies]
+cudarc = { version = "0.13.3", features = ["cuda-12060"] }
+paste = "1.0.15"
