@@ -12,7 +12,7 @@ fn main() -> KResult<()> {
     println!("{:?}", output);
 
     // Let's find the best launch configuration
-    let s = autotune::Search {
+    let search = autotune::Search {
         configs: vec![
             Config::for_num_elems(1000),
             Config::for_num_elems(100),
@@ -22,7 +22,7 @@ fn main() -> KResult<()> {
 
     println!(
         "Best configuration: {:?}",
-        autotune::benchmark(&gpu, s, |gpu, c| {
+        autotune::benchmark(&gpu, search, |gpu, c| {
             let input = vec![0.0; 1000];
 
             let start = Instant::now();
