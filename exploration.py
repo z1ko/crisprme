@@ -70,7 +70,7 @@
 #
 #       CBA - CBA - CBAA - CBBBAAAA - CBBAAAAA
 #
-#   Q1  111   222   3333   44444444   55555555
+#   Q1  111   222   3333   44444444   55555555        
 #   Q2  1X1   2X2   3XX3   4XXXXXX4   5XXXXXX5
 #   Q3  1X1   2X2   3XX3   4XXXXXX4   5XXXXXX5
 #   Q4  111   222   3333   44444444   55555555
@@ -89,15 +89,23 @@
 #     in modo da permettere ai warp di lavorare sempre in orizzontale, come nella quarta e
 #     quinta tabella dell'esempio.
 #
+#     Potrei fare shuffle degli elementi del batch per avere gia un accesso in memoria ottimizzato.
+#
+#     1q1c 1q1b 1q1a |
+#     [1q2c 1q2b 1q2a] 2q1c 2q1b 2q1a |
+#     1q3c 1q3b 1q3a 1q3a [2q2c 2q2b 2q2a] 3q1c 3q1b 3q1a |
+#     1q4c 1q4b 1q4b 1q4b 1q4a 1q4a 1q4a 1q4a [2q3c 2q3b 2q3a 2q3a] 3q2c 3q2b 3q2a 4q1c 4q1b 4q1a |
+#     ...
+#
+#     Ogni riga puo essere processata in parallelo in modo indipendente
+#
+#     [2q3c 2q3b 2q3a 2q3a] ha bisogno di [1q3c 1q3b 1q3a 1q3a] (same size) e [1q2c 1q2b 1q2a], [2q2c 2q2b 2q2a] (diversa dimensione, virtuali).
+#     Per le celle virtuali, il valore si puo calcolare con il GLOBAL_PARENT_OFFSET, che va sottratto ad ogni indirizzo di memoria.
+#       -> PROBABILE CONFLITTO DI BANKS, AGGIUNGERE SHIFT-PADDING
+#
 #
 # [4] Nel backtracking quando passo da un livello l al livello l-1 devo mappare la cella virtuale 
 #     alla cella reale usando il PARENT_OFFSET.
-#
-#       --A --A --AA ----AAAA ---AAAAA
-#       --- --0 --00 ----0011 ---01233
-#                           |       ||
-#                           |_______/|
-#                           \________/
 #
 #    Quindi data c(i,j), dove i si muove lungo la direzione di Q e j invece attraversa le DP di livello avremo:
 #       
