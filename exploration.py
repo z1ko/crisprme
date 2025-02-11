@@ -3,7 +3,7 @@
 #
 #
 # A            layer_size
-# 
+#
 # 0 *          1
 #   |
 # 1 *          1
@@ -105,37 +105,26 @@
 #       -> PROBABILE CONFLITTO DI BANKS, AGGIUNGERE SHIFT-PADDING
 #
 #
-# [4] Nel backtracking quando passo da un livello l al livello l-1 devo mappare la cella virtuale 
+# [4] Nel backtracking quando passo da un livello l al livello l-1 devo mappare la cella virtuale
 #     alla cella reale usando il PARENT_OFFSET.
 #
 #    Quindi data c(i,j), dove i si muove lungo la direzione di Q e j invece attraversa le DP di livello avremo:
-#       
+#
 #
 #       L4    L3    L2    L1    L0
 #       AaAAA AaAA- Aa--- a---- a----   i   j
-#       AaAAA AaAA- Aa--- a---- a----      
-#       AxAAA AxAA- Ax--- x---- x----   | / 
+#       AaAAA AaAA- Aa--- a---- a----
+#       AxAAA AxAA- Ax--- x---- x----   | /
 #       AaAAA AaAA- Aa--- a---- a----   |/
 #
-#    In questo esempio le 'a' rappresentano una DP attraverso i layer del batch, quando passiamo dal layer 2 al layer 1 dobbiamo 
+#    In questo esempio le 'a' rappresentano una DP attraverso i layer del batch, quando passiamo dal layer 2 al layer 1 dobbiamo
 #    mappare la cella 'x' (insieme al resto della DP) sulla slice del primo strand.
 #
 #       c(i, j-1) = layer_precedente(i, GLOBAL_PARENT_OFFSET[i])
 #
 
 
-#L = [ 3,  3,  5,  8]
-#C = [ 3,  6, 11, 19]
-#R = [ 0,  3,  6, 11]
-
-#S = [ 
-#    "1a1", "1b1", "1c1", 
-#    "2a1", "2b1", "2c1", 
-#    "3a1", "3a2", "3b1", "3c1", "3c2",
-#    "4a1", "4a2", "4b1", "4b2", "4b3", "4c1", "4c2", "4c3"
-#]
-
-if False:
+if True:
     S = [
         'C', 'B', 'A',
         'C', 'B', 'A',
@@ -156,161 +145,156 @@ if False:
         0, 0, 0, 0, 0, 0, 0, 0, 1
     ]
 else:
-    S = [ 
-        'A', # layer: 0 
-        'C', # layer: 1
-        'C', # layer: 2
-        'C'  # layer: 3
+    S = [
+        'A',
+        'C', 'A',
+        'C', 'D', 'S'
     ]
-    P = [ 
-        0, # layer: 0 
-        0, # layer: 1 
-        0, # layer: 2
-        0, # layer: 3 
+    P = [
+        0,
+        0, 1,
+        0, 1, 1
     ]
-    Q = 'AACA'
+    Q = 'ACB'
 
     # Dimensione di ogni layer
-    L = [ 1, 1, 1, 1 ]
+    L = [1, 2, 3]
 
 # =========================================
 # Easiest test case
 
-SCORE_MATCH =  1
+SCORE_MATCH = 1
 SCORE_INDEL = -1
+
 
 def create_diag_sizes(L):
     result = []
 
     window_size = len(L)
     L_new = [0] * (window_size - 1) + L
-    L_new = L_new + [0] * (window_size - 1) 
+    L_new = L_new + [0] * (window_size - 1)
 
     for i in range(0, len(L_new) - window_size + 1):
         result.append(sum(L_new[i:i+window_size]))
 
     return result
 
-# Prefix sum delle dimensioni di ogni layer
-J = [ sum(L[0:i+1]) for i in range(len(L))]
 
-# Dimensione di ogni diagonale, creata tramite sliding-window 
-# (len = len(L)) sulle dimensioni dei layer
-C = create_diag_sizes(L)
+# Prefix-sum delle dimensioni di ogni layer
+C = [sum(L[0:i]) for i in range(len(L))]
 
-# Offset per accedere linearmente in memoria in base 
-# all'indice dell'anti-diagonale
-D = [ sum(C[0:i]) for i in range(len(C)) ]
+# Dimensione di ogni diagonale, creata tramite sliding-window
+# di lunghezza 'len(L)' sulle dimensioni dei layer
+D = create_diag_sizes(L)
+
+# Offset in memoria di ogni tabella
+TABLES = [c * len(Q) for c in C]
 
 # Dynamic programming table
-M = [0] * (len(S) * len(Q))
+MEMORY = [0] * (len(Q) * sum(L))
+M_BASE = float(L[-1] * len(Q) ** 2)
+M_OURS = float(len(MEMORY))
+
 
 print(f"Dimensione di ogni layer: {L}")
-print(f"Prefix sum delle dimensioni di ogni layer: {J}")
-print(f"Dimensione di ogni diagonale: {C}")
-print(f"Offset per accedere linearmente in memoria: {D}")
-print(f"memoria: {M}")
-
-# Accedi alla memoria di una anti-diagonale con safeguards
-def memory_get(mem, i, k, layer, diag):
-    if k < 0 or i >= C[k] or i < 0:
-        if k == -2: # Prima diagonale
-            return 0
-        # Margini
-        return - (layer + 1) + (1 if diag else 0)
-    return mem[D[k] + i]
-
-# Setta la memoria di una anti-diagonale
-def memory_set(mem, i, k, value):
-    mem[D[k] + i] = value
+print(f"Prefix-sum delle dimensioni di ogni layer: {C}")
+print(f"Dimensione di ogni diagonale: {D}")
+print(f"Offset di ogni tabella in memoria: {TABLES}")
+print(f"Dimensione memoria non ottimizzata: {M_BASE}")
+print(f"Dimensione memoria: {M_OURS} (-{(1.0 - M_OURS/M_BASE)*100:.2f}%)")
 
 
-def calc_curr_thread_layer(i, base, layer):
+def memory_table(t, i, j):
+    """ Access in memory table with safeguards
+    """
 
-    # trova dimensione layer precedente
-    prev_layer_size = 99
-    curr_layer_size = J[0]
-    curr_layer_index = 0 
+    # Magin root
+    if t < 0 and i < 0:
+        return 0
 
-    # Massimo len(Q) iterazioni
-    while i + base >= curr_layer_size:
-        curr_layer_index += 1
-        curr_layer_size = C[curr_layer_index]
-        prev_layer_size = L[curr_layer_index - 1]
+    # Margin left
+    if t < 0:
+        return -(i + 1)
 
-    return prev_layer_size + P[i], layer - curr_layer_index
+    if i < 0:
+        return -(t + 1)
 
-# Simula un gruppo di thread indipendenti
-def threads(layer, size, base, fn):
-    for i in range(size):
-        offset, q = calc_curr_thread_layer(i, base, layer)
-        fn(i, layer, offset, q)
-
-# Processa un elemento dell'anti-diagonale se siamo nella prima
-# parte della matrice, quindi gli indici sono piu semplici
-def thread_fn_first(i, k, offset, q):
-
-    u = memory_get(M, i, k - 1, k, False)
-    l = memory_get(M, i - offset, k - 1, k, False)
-    d = memory_get(M, i - offset, k - 2, k, True)
-
-    u_score = u + SCORE_INDEL
-    l_score = l + SCORE_INDEL
-
-    matches = 1 if Q[q] == S[i] else -1
-    d_score = d + matches * SCORE_MATCH
-
-    score = max(max(u_score, l_score), d_score)
-    memory_set(M, i, k, score)
-
-    print(f"({i:>2},{k})-> u: {u:>2}/{u_score:>2}, l: {l:>2}/{l_score:>2}, d: {d:>2}/{d_score:>2} -> score: {score:>2}")
+    return MEMORY[TABLES[t] + i * L[t] + j]
 
 
-# Processa un elemento dell'anti-diagonale se siamo nella seconda
-# parte della matrice, indici piu complessi relativi al bordo di destra
-def thread_fn_second(i, k, offset, q):
+def memory_table_set(t, i, j, value):
+    MEMORY[TABLES[t] + i * L[t] + j] = value
 
-    # Dove sono io partendo dalla fine?
-    i_end = (C[k] - 1) - i
 
-    # Dove sono relativo all'anti-diagonale precedente? Partendo dall'inizio
-    a_beg = (C[k - 1] - 1) - i_end
+def get_thread_position(tid, i_start, t_start):
+    """ Returns the current table, i, and j position of the thread in the diagonal
+    """
 
-    # Dove sono relativo all'anti-diagonale ancora prima? Partendo dall'inizio
-    b_beg = (C[k - 2] - 1) - i_end
+    i = i_start
+    j = tid
+    t = t_start
 
-    u = memory_get(M, a_beg, k - 1, k, False)
-    l = memory_get(M, a_beg - offset, k - 1, k, False)
-    d = memory_get(M, b_beg - offset, k - 2, k, True)
+    # Finds the current layer by iteratively
+    # This iterates for maximum 'len(Q)' times
+    # NOTE: Use a binary search
+    while j >= L[t]:
+        j -= L[t]
+        t += 1
+        i -= 1
 
-    u_score = u + SCORE_INDEL
-    l_score = l + SCORE_INDEL
+    return t, i, j
 
-    matches = 1 if Q[q - 1] == S[i] else -1
-    d_score = d + matches * SCORE_MATCH
+
+def threads(N, i_start, t_start, fn):
+    for tid in range(N):
+        t, i, j = get_thread_position(tid, i_start, t_start)
+        fn(t, i, j)
+
+
+def thread_function(t, i, j):
+    """ Indipendent function executed in parallel over each element of a diagonal
+    """
+
+    u_cell = memory_table(t, i - 1, j)
+    l_cell = memory_table(t - 1, i, j - P[C[t] + j])
+    d_cell = memory_table(t - 1, i - 1, j - P[C[t] + j])
+
+    # Check if the reference string and the query match
+    q = Q[i]
+    s = S[C[t] + j]
+    matches = 1 if q == s else -1
+
+    u_score = u_cell + SCORE_INDEL
+    l_score = l_cell + SCORE_INDEL
+    d_score = d_cell + matches * SCORE_MATCH
 
     score = max(max(u_score, l_score), d_score)
-    memory_set(M, i, k, score)
+    memory_table_set(t, i, j, score)
 
-    print(f"({i:>2},{k})-> u: {u:>2}/{u_score:>2}, l: {l:>2}/{l_score:>2}, d: {d:>2}/{d_score:>2} -> score: {score:>2}")
+    print(
+        f"{t},{i},{j} -> u: {u_cell:>2}/{u_score:>2}, l: {l_cell:>2}/{l_score:>2}, d({q} {'==' if q == s else '!='} {s}): {d_cell:>2}/{d_score:>2} -> {score:>2}")
 
 
-layer_count = len(L)
+if __name__ == "__main__":
 
-# Prima dell'anti-diagonale
-for diag_index in range(layer_count):
-    threads(
-        diag_index,          # diagonale corrente  
-        C[diag_index],       # dimensione della diagonale
-        0,                   # dove inizia il confronto con la sequenza
-        thread_fn_first      # funzione di ogni thread
-    )
+    diag = 0
 
-# Dopo l'anti-diagonale
-for diag_index in range(layer_count, 2 * layer_count - 1):
-    threads(
-        diag_index, 
-        C[diag_index], 
-        J[layer_count - diag_index], 
-        thread_fn_second
-    )
+    # First set of anti-diagonals
+    for i_start in range(0, len(Q)):
+        t_start = 0
+
+        N = D[diag]
+        diag += 1
+
+        print(f"({t_start},{i_start}) with {N} elements")
+        threads(N, i_start, t_start, thread_function)
+
+    # Second set of anti-diagonals
+    for t_start in range(1, len(Q)):
+        i_start = len(Q) - 1
+
+        N = D[diag]
+        diag += 1
+
+        print(f"({t_start},{i_start}) with {N} elements")
+        threads(N, i_start, t_start, thread_function)
