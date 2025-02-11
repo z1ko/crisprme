@@ -14,8 +14,8 @@ fn main() {
     // Where the articats will be located
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
-    let cuda_src = PathBuf::from("src/cuda/kernels/example.cu");
-    let ptx = out_dir.join("example.ptx");
+    let cuda_src = PathBuf::from("src/cuda/kernels/mine_global_aligment.cu");
+    let ptx = out_dir.join("mine_global_aligment.ptx");
 
     let nvcc = Command::new("nvcc")
         .arg("-ptx")

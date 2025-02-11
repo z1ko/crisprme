@@ -24,7 +24,7 @@ pub type Config = LaunchConfig;
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 // Generate initialization function to load all generated PTX sources from the build system
-create_initialize_func!("example");
+create_initialize_func!("mine_global_aligment");
 
 /// All the kernels will be inside this module
 pub mod kernel {
@@ -39,5 +39,25 @@ pub mod kernel {
             f.launch(config, (&input, n))?; // Launch kernel on GPU
         }
         gpu.sync_reclaim(input) // Retrive output
+    }
+
+
+    /// Mine all aligments of a query string into a trie of sequences
+    pub fn mine_global_aligment(
+        gpu: &Gpu, 
+        config: LaunchConfig,
+        levels: Vec<u32>,
+        diagonals: Vec<u32>
+    ) -> KResult<()> {
+
+        let levels = gpu.htod_copy(levels)?;
+        let diagonals = gpu.htod_copy(diagonals)?;
+
+        let f = gpu.get_func("crisprme", "mine_global_aligment").unwrap();
+        unsafe {
+            f.launch(config, (&levels, &diagonals))?;
+        }
+
+        Ok(())
     }
 }
