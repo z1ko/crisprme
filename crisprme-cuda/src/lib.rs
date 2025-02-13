@@ -46,16 +46,25 @@ pub mod kernel {
     pub fn mine_global_aligment(
         gpu: &Gpu, 
         config: LaunchConfig,
+        query: Vec<u32>,
+        bucket: Vec<u32>,
+        parents: Vec<u32>,
         levels: Vec<u32>,
-        diagonals: Vec<u32>
+        levels_cumsum: Vec<u32>,
+        tables: Vec<u32>
     ) -> KResult<()> {
 
+        let n = bucket.len();
         let levels = gpu.htod_copy(levels)?;
-        let diagonals = gpu.htod_copy(diagonals)?;
+        let levels_cumsum = gpu.htod_copy(levels_cumsum)?;
+        let query = gpu.htod_copy(query)?;
+        let bucket = gpu.htod_copy(bucket)?;
+        let parents = gpu.htod_copy(parents)?;
+        let tables = gpu.htod_copy(tables)?;
 
         let f = gpu.get_func("crisprme", "mine_global_aligment").unwrap();
         unsafe {
-            f.launch(config, (&levels, &diagonals))?;
+            f.launch(config, (&bucket, &parents, &levels, &levels_cumsum, &tables, &query, n as u32))?;
         }
 
         Ok(())

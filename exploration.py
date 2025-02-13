@@ -124,7 +124,7 @@
 #
 
 
-if True:
+if False:
     S = [
         'C', 'B', 'A',
         'C', 'B', 'A',
@@ -277,24 +277,25 @@ def thread_function(t, i, j):
 
 if __name__ == "__main__":
 
+    diag_size = 0
     diag = 0
 
     # First set of anti-diagonals
     for i_start in range(0, len(Q)):
         t_start = 0
 
-        N = D[diag]
+        diag_size += L[diag]
         diag += 1
 
-        print(f"({t_start},{i_start}) with {N} elements")
-        threads(N, i_start, t_start, thread_function)
+        print(f"({t_start},{i_start}) with {diag_size} elements")
+        threads(diag_size, i_start, t_start, thread_function)
 
     # Second set of anti-diagonals
     for t_start in range(1, len(Q)):
         i_start = len(Q) - 1
 
-        N = D[diag]
+        diag_size -= L[diag - len(Q)]
         diag += 1
 
-        print(f"({t_start},{i_start}) with {N} elements")
-        threads(N, i_start, t_start, thread_function)
+        print(f"({t_start},{i_start}) with {diag_size} elements")
+        threads(diag_size, i_start, t_start, thread_function)
