@@ -123,17 +123,17 @@
 #       c(i, j-1) = layer_precedente(i, GLOBAL_PARENT_OFFSET[i])
 #
 
-
 if False:
     S = [
         'C', 'B', 'A',
         'C', 'B', 'A',
         'C', 'B', 'A', 'A',
         'C', 'B', 'B', 'B', 'A', 'A', 'A', 'A',
+        'C', 'B', 'B', 'B', 'A', 'A', 'A', 'A', 'A',
         'C', 'B', 'B', 'B', 'A', 'A', 'A', 'A', 'A'
     ]
 
-    L = [3, 3,  4,  8,  9]
+    L = [3, 3,  4,  8,  9, 9]
     Q = 'ABCDE'
 
     # Parent offset
@@ -142,30 +142,32 @@ if False:
         0, 0, 0,
         0, 0, 0, 1,
         0, 0, 1, 2, 2, 3, 3, 4,
-        0, 0, 0, 0, 0, 0, 0, 0, 1
+        0, 0, 0, 0, 0, 0, 0, 0, 1,
+        0, 1, 1, 2, 2, 3, 3, 4, 4
     ]
 else:
     S = [
         'A',
         'C', 'A',
-        'C', 'D', 'S'
+        'C', 'D', 'S',
+        'B', 'B', 'B',
     ]
     P = [
         0,
         0, 1,
-        0, 1, 1
+        0, 1, 1,
+        0, 0, 0
     ]
     Q = 'ACB'
 
     # Dimensione di ogni layer
-    L = [1, 2, 3]
+    L = [1, 2, 3, 3]
 
 # =========================================
 # Easiest test case
 
-SCORE_MATCH = 1
+SCORE_MATCH = 4
 SCORE_INDEL = -1
-
 
 def create_diag_sizes(L):
     result = []
@@ -192,7 +194,7 @@ TABLES = [c * len(Q) for c in C]
 
 # Dynamic programming table
 MEMORY = [0] * (len(Q) * sum(L))
-M_BASE = float(L[-1] * len(Q) ** 2)
+M_BASE = float(L[-1] * len(Q) * len(L))
 M_OURS = float(len(MEMORY))
 
 
@@ -275,6 +277,15 @@ def thread_function(t, i, j):
         f"{t},{i},{j} -> u: {u_cell:>2}/{u_score:>2}, l: {l_cell:>2}/{l_score:>2}, d({q} {'==' if q == s else '!='} {s}): {d_cell:>2}/{d_score:>2} -> {score:>2}")
 
 
+def argmax(xs):
+    i = 0
+    best = xs[0]
+    for j, x in enumerate(xs):
+        if x > best:
+            best = x
+            i = j
+    return i
+
 if __name__ == "__main__":
 
     diag_size = 0
@@ -291,11 +302,85 @@ if __name__ == "__main__":
         threads(diag_size, i_start, t_start, thread_function)
 
     # Second set of anti-diagonals
-    for t_start in range(1, len(Q)):
+    for t_start in range(1, len(L) - len(Q) + 1):
         i_start = len(Q) - 1
 
-        diag_size -= L[diag - len(Q)]
+        # No change in diagonal size
+        #diag_size -= L[diag - len(Q)]
         diag += 1
 
         print(f"({t_start},{i_start}) with {diag_size} elements")
         threads(diag_size, i_start, t_start, thread_function)
+
+    # Third set of anti-diagonals
+    for t_start in range(len(L) - len(Q) + 1, len(L)):
+        i_start = len(Q) - 1
+
+        diag_size -= L[diag - len(L)]
+        diag += 1
+
+        print(f"({t_start},{i_start}) with {diag_size} elements")
+        threads(diag_size, i_start, t_start, thread_function)
+
+
+    # Extract best aligments
+    best = [ memory_table(len(L) - 1, len(Q) - 1, j) for j in range(L[-1])]
+    print(f"best: {best}")
+
+    # Reverse, find actual aligments
+    cigarx = []
+    for _ in range(L[-1]):
+        cigarx.append(['N'] * len(L))
+
+    frontier_index = 0
+    frontier_old = [(len(L) - 1, len(Q) - 1, j, j, 0) for j,b in enumerate(best)]
+    frontier_new = []
+    while len(frontier_old) != 0 and frontier_index != len(L):
+
+        # On element of the frontier for each thread
+        for tidx, (t, i, j, output_id, element_id) in enumerate(frontier_old):
+            
+            cells_indices = [
+                (t, i - 1, j),                  # 0, u
+                (t - 1, i, j - P[C[t] + j]),    # 1, l
+                (t - 1, i - 1, j - P[C[t] + j]) # 2, d
+            ]
+
+            cell_values = [
+                memory_table(*cells_indices[0]),
+                memory_table(*cells_indices[1]),
+                memory_table(*cells_indices[2]),
+            ]
+
+            # Find best near cell
+            cell_best_idx = argmax(cell_values)
+            cell_best_indices = cells_indices[cell_best_idx]
+            
+            # Query and reference string values
+            q = Q[i]
+            s = S[C[t] + j]
+            
+            # Match or mismatch
+            if cell_best_idx == 2:
+                cigarx[output_id][len(L) - element_id - 1] = '=' if q == s else 'X'
+            elif cell_best_idx == 1:
+                cigarx[output_id][len(L) - element_id - 1] = 'I'
+            else:
+                cigarx[output_id][len(L) - element_id - 1] = 'D'
+
+            # Add new cell position into frontier
+            frontier_new.append((*cells_indices[cell_best_idx], output_id, element_id + 1))
+
+            
+        frontier_index += 1
+        frontier_old = frontier_new
+        frontier_new = []
+
+        pass
+
+print("best sequences:")
+for i in range(L[-1]):
+    print("".join(cigarx[i]))
+
+
+
