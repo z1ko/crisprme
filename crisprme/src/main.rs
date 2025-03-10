@@ -1,6 +1,13 @@
-use std::time::Instant;
+use std::{collections::HashSet, time::Instant};
+use rand::Rng;
 
 use crisprme_cuda::{autotune, kernel, Config, KResult};
+
+mod model;
+mod utils;
+
+use model::{Tree};
+use utils::generate_test_sequence;
 
 fn memory_of_bucket(levels: &[u32], query_len: usize, bucket_len: usize) -> u32 {
     let mut result = 0;
@@ -12,6 +19,35 @@ fn memory_of_bucket(levels: &[u32], query_len: usize, bucket_len: usize) -> u32 
 
 /// Example usage of kernels
 fn main() -> KResult<()> {
+
+    const REF_SIZE: usize = 4;
+    const ANCHOR_LEN: usize = 2;
+
+    // Available nucleotides
+    let nucleotides: &[u8] = b"ACTG";
+
+    // Create random reference sequence
+    let reference = utils::generate_test_sequence(REF_SIZE, nucleotides);
+    let reference_windows = utils::split_windows(&reference, ANCHOR_LEN);
+
+    // Iterate over all windows of size ANCHOR_LEN and insert into tree
+    let mut tree: Tree<4> = Tree::new(ANCHOR_LEN);
+    for seq in reference_windows {
+        tree.insert(seq);
+    }
+
+    tree.print_sequences();
+
+    // Packed anchor
+    let packed_tree = tree.pack();
+    packed_tree.print(ANCHOR_LEN);
+
+    // How many unique sequences are stored?
+    println!("Span of the tree: {}", tree.span());
+
+    return Ok(());
+
+
     let gpu = crisprme_cuda::initialize()?;
 
     // The sequence to test
@@ -50,28 +86,4 @@ fn main() -> KResult<()> {
     )?;
 
     Ok(())
-
-    /*
-    // Let's find the best launch configuration
-    let search = autotune::Search {
-        configs: vec![
-            Config::for_num_elems(1000),
-            Config::for_num_elems(100),
-            Config::for_num_elems(10),
-        ],
-    };
-
-    println!(
-        "Best configuration: {:?}",
-        autotune::benchmark(&gpu, search, |gpu, c| {
-            let input = vec![0.0; 1000];
-
-            let start = Instant::now();
-            kernel::example(gpu, c, input).unwrap();
-            start.elapsed()
-        })?
-    );
-    Ok(())
-    */
-
 }
