@@ -71,7 +71,7 @@ impl Node<4> {
         }
     }
 
-    pub fn pack(&self, offset: usize, curr_layer: usize, packed: &mut PackedTree) -> usize {
+    pub fn pack(&self, offset: usize, curr_layer: usize, packed: &mut PackedTree<u8, usize>) -> usize {
         match self {
             // If we are at a Leaf there is nothing left to do here
             Node::Leaf { counter: _ } => { return 1; },
@@ -235,13 +235,13 @@ impl Tree<4> {
 
 /// A Prefix tree implemented with linear memory and offsets
 #[derive(Debug)]
-pub struct PackedTree {
-    pub layers: Vec<Vec<u8>>,
-    pub offset: Vec<Vec<usize>>,
+pub struct PackedTree<E, O> {
+    pub layers: Vec<Vec<E>>,
+    pub offset: Vec<Vec<O>>,
     pub depth: usize,
 }
 
-impl PackedTree {
+impl<E, O> PackedTree<E, O> {
     /// How many unique sequences are stored in the packed tree
     pub fn span(&self) -> usize {
         return self.layers[self.depth -1].len();
@@ -251,12 +251,12 @@ impl PackedTree {
 // PackedTree that uses global offsets
 #[derive(Debug, Shrinkwrap)]
 #[shrinkwrap(mutable)]
-pub struct GlobalPackedTree(pub PackedTree);
+pub struct GlobalPackedTree(pub PackedTree<u8, usize>);
 
 // PackedTree that uses local relative offsets
 #[derive(Debug, Shrinkwrap)]
 #[shrinkwrap(mutable)]
-pub struct LocalPackedTree(pub PackedTree);
+pub struct LocalPackedTree<O>(pub PackedTree<u8, O>);
 
 impl GlobalPackedTree {
     pub fn print(&self) {
@@ -291,13 +291,16 @@ impl GlobalPackedTree {
     }
 
     /// Returns a collection of sub PackedTree(s) over the entire PackedTree
-    pub fn split_at_width(&self, width: usize) -> Vec<LocalPackedTree> { 
+    pub fn split_at_width<O: TryFrom<usize> + Clone>(&self, width: usize) -> Vec<LocalPackedTree<O>> 
+    where
+        <O as TryFrom<usize>>::Error: std::fmt::Debug
+    { 
 
         // The algorithm is simple, we start from the last layer, then we calculate
         // the initial index of the parent layer and the length of the run.
         // Continue to iterate until we reach the first layer.    
         
-        let mut results = Vec::new();
+        let mut results: Vec<LocalPackedTree<O>> = Vec::new();
 
         let mut beg = 0;
         let sequence_count = self.span();
@@ -350,8 +353,11 @@ impl GlobalPackedTree {
                     local_offsets[e] = shift;
                 }
 
+                // Convert to the specified offset memory type
                 // Update local offsets inside the PackedTree structure
-                packed_tree.offset[self.depth - 1 - layer] = local_offsets;
+                packed_tree.offset[self.depth - 1 - layer] = local_offsets.iter()
+                    .map(|offset| (*offset).try_into().unwrap())
+                    .collect();
 
                 // Calculate new rmin, rmax and rlen
                 rlen = new_rlen;
@@ -366,7 +372,7 @@ impl GlobalPackedTree {
     }
 }
 
-impl LocalPackedTree {
+impl LocalPackedTree<u8> {
     pub fn print(&self) {
         println!("local_packed_tree::elements:");
         for i in 0..self.depth {
@@ -385,16 +391,16 @@ impl LocalPackedTree {
         for s in 0..self.span() {
             
             let mut seq = vec![b'X'; self.depth];
-            let mut i = s;
+            let mut i = s as u8;
 
-            seq[self.depth - 1] = self.layers[self.depth - 1][i];
-            let mut offset = self.offset[self.depth - 1][i];
+            seq[self.depth - 1] = self.layers[self.depth - 1][i as usize];
+            let mut offset = self.offset[self.depth - 1][i as usize];
 
             for l in 1..self.depth {
                 i -= offset;
 
-                seq[self.depth - 1 - l] = self.layers[self.depth - 1 - l][i];
-                offset = self.offset[self.depth - 1 - l][i];
+                seq[self.depth - 1 - l] = self.layers[self.depth - 1 - l][i as usize];
+                offset = self.offset[self.depth - 1 - l][i as usize];
             }
 
             let seq_string = std::str::from_utf8(&seq).unwrap();

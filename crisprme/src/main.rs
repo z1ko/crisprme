@@ -18,8 +18,8 @@ fn memory_of_bucket(levels: &[u32], query_len: usize, bucket_len: usize) -> u32 
     return (result + bucket_len * 2) as u32;
 }
 
-const REF_SIZE: usize = 12;
-const ANCHOR_LEN: usize = 2;
+const REF_SIZE: usize = 64;
+const ANCHOR_LEN: usize = 4;
 
 /// Example usage of kernels
 fn main() -> KResult<()> {
@@ -45,11 +45,11 @@ fn main() -> KResult<()> {
     packed_tree.print();
 
     // Print the all split packed trees
-    let split_packed_tree = packed_tree.split_at_width(3);
-    for split_tree in &split_packed_tree {
-        println!("----------------------");
-        split_tree.print();
-    }
+    let split_packed_tree = packed_tree.split_at_width::<u8>(3);
+    //for split_tree in &split_packed_tree {
+    //    println!("----------------------");
+    //    split_tree.print();
+    //}
 
     // How many unique sequences are stored?
     println!("Span of the tree: {}", tree.span());
