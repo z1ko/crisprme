@@ -1,11 +1,11 @@
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 
 /// A generic sequence
 pub type Seq = Vec<u8>;
 
 /// Create a random reference sequence
-pub fn generate_test_sequence(length: usize, nucleotides: &[u8]) -> Seq {
-    let mut rng = rand::rng();
+pub fn generate_test_sequence(length: usize, nucleotides: &[u8], seed: u64) -> Seq {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let take_one = || nucleotides[rng.random_range(0..nucleotides.len())]; // Uniform random sequences
     std::iter::repeat_with(take_one)
         .take(length).collect()

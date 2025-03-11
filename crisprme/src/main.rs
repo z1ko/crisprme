@@ -1,13 +1,14 @@
+#[macro_use] extern crate shrinkwraprs;
+
 use std::{collections::HashSet, time::Instant};
 use rand::Rng;
 
 use crisprme_cuda::{autotune, kernel, Config, KResult};
 
-mod model;
+mod tree;
 mod utils;
 
-use model::{Tree};
-use utils::generate_test_sequence;
+use tree::Tree;
 
 fn memory_of_bucket(levels: &[u32], query_len: usize, bucket_len: usize) -> u32 {
     let mut result = 0;
@@ -17,17 +18,17 @@ fn memory_of_bucket(levels: &[u32], query_len: usize, bucket_len: usize) -> u32 
     return (result + bucket_len * 2) as u32;
 }
 
+const REF_SIZE: usize = 12;
+const ANCHOR_LEN: usize = 2;
+
 /// Example usage of kernels
 fn main() -> KResult<()> {
-
-    const REF_SIZE: usize = 4;
-    const ANCHOR_LEN: usize = 2;
 
     // Available nucleotides
     let nucleotides: &[u8] = b"ACTG";
 
     // Create random reference sequence
-    let reference = utils::generate_test_sequence(REF_SIZE, nucleotides);
+    let reference = utils::generate_test_sequence(REF_SIZE, nucleotides, 3666);
     let reference_windows = utils::split_windows(&reference, ANCHOR_LEN);
 
     // Iterate over all windows of size ANCHOR_LEN and insert into tree
@@ -40,7 +41,15 @@ fn main() -> KResult<()> {
 
     // Packed anchor
     let packed_tree = tree.pack();
-    packed_tree.print(ANCHOR_LEN);
+    println!("----------------------");
+    packed_tree.print();
+
+    // Print the all split packed trees
+    let split_packed_tree = packed_tree.split_at_width(3);
+    for split_tree in &split_packed_tree {
+        println!("----------------------");
+        split_tree.print();
+    }
 
     // How many unique sequences are stored?
     println!("Span of the tree: {}", tree.span());

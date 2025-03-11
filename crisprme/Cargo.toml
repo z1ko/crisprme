@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 crisprme-cuda = { path = "../crisprme-cuda" }
 rand = "0.9.0"
+shrinkwraprs = "0.3.0"
