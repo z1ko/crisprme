@@ -99,7 +99,7 @@ __device__ void dpt_update(i32 t, i32 i, i32 j) {
 
 #ifdef DEBUG
   char sym = (matches == 1) ? '=' : '!';
-  printf("(%d, %d, %d) -> u: %2d/%2d, l: %2d/%2d, d(%d %c %d): %2d/%2d -> %2d\n", 
+  printf("(%d, %d, %d) -> u: %2d/%2d, l: %2d/%2d, d(%c %c %c): %2d/%2d -> %2d\n", 
     t, i, j, u_cell, u_score, l_cell, l_score, s, sym, q, d_cell, d_score, score);
 #endif
 

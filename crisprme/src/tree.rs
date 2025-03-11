@@ -241,10 +241,41 @@ pub struct PackedTree<E, O> {
     pub depth: usize,
 }
 
-impl<E, O> PackedTree<E, O> {
+impl<E, O> PackedTree<E, O>
+{
     /// How many unique sequences are stored in the packed tree
     pub fn span(&self) -> usize {
         return self.layers[self.depth -1].len();
+    }
+}
+
+impl PackedTree<u8, u32> {
+
+    pub fn layer_sizes(&self) -> Vec<u32> {
+        self.layers.iter()
+            .map(|layer| layer.len().try_into().unwrap())
+            .collect()
+    }
+
+    pub fn layer_sizes_cumsum(&self) -> Vec<u32> {
+        let mut prefixsum: Vec<u32> = self.layer_sizes().iter()
+            .scan(0, 
+                |acc, x| {
+                    *acc += x;
+                    Some(*acc)
+                }
+            ).collect();
+
+        prefixsum.insert(0, 0);
+        prefixsum.pop();
+
+        prefixsum
+    }
+
+    pub fn dp_table_offsets(&self) -> Vec<u32> {
+        self.layer_sizes_cumsum().iter()
+            .map(|s| *s * u32::try_from(self.depth).unwrap())
+            .collect()
     }
 }
 
@@ -372,7 +403,7 @@ impl GlobalPackedTree {
     }
 }
 
-impl LocalPackedTree<u8> {
+impl LocalPackedTree<u32> {
     pub fn print(&self) {
         println!("local_packed_tree::elements:");
         for i in 0..self.depth {
@@ -391,7 +422,7 @@ impl LocalPackedTree<u8> {
         for s in 0..self.span() {
             
             let mut seq = vec![b'X'; self.depth];
-            let mut i = s as u8;
+            let mut i = s as u32;
 
             seq[self.depth - 1] = self.layers[self.depth - 1][i as usize];
             let mut offset = self.offset[self.depth - 1][i as usize];
@@ -507,7 +538,7 @@ mod tests {
         let packed_tree = tree.pack();
 
         // Split packed tree into multiple local trees and aggregate all sequences
-        let split_packed_trees = packed_tree.split_at_width(2);
+        let split_packed_trees = packed_tree.split_at_width(64);
         let mut split_seq_set: HashSet<String> = HashSet::new();
         for split_tree in &split_packed_trees {
             let split_tree_seqs = split_tree.sequences();

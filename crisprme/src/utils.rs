@@ -16,3 +16,8 @@ pub fn split_windows(sequence: &[u8], window_size: usize) -> Vec<&[u8]> {
     let windows = sequence.windows(window_size);
     windows.collect()
 }
+
+/// Linearize a collection of arrays
+pub fn linearize_memory<T: Clone>(arrays: &[Vec<T>]) -> Vec<T> {
+    arrays.concat()
+}

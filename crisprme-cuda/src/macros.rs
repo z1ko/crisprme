@@ -14,7 +14,7 @@ macro_rules! create_initialize_func {
 
                 // Load all PTX sources to the GPU
                 $({
-                    println!("Loading source for {}:\n{}", concat!($ptx_file, ".ptx"), [< PTX_ $ptx_file:upper >]);
+                    println!("Loading source for {}", concat!($ptx_file, ".ptx"));
                     let ptx = Ptx::from_src([< PTX_ $ptx_file:upper >]);
                     gpu.load_ptx(ptx, "crisprme", &[ $ptx_file ])?;
                 })*

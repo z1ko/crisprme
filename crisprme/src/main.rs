@@ -1,8 +1,5 @@
 #[macro_use] extern crate shrinkwraprs;
 
-use std::{collections::HashSet, time::Instant};
-use rand::Rng;
-
 use crisprme_cuda::{autotune, kernel, Config, KResult};
 
 mod tree;
@@ -18,8 +15,8 @@ fn memory_of_bucket(levels: &[u32], query_len: usize, bucket_len: usize) -> u32 
     return (result + bucket_len * 2) as u32;
 }
 
-const REF_SIZE: usize = 64;
-const ANCHOR_LEN: usize = 4;
+const REF_SIZE: usize = 12;
+const ANCHOR_LEN: usize = 3;
 
 /// Example usage of kernels
 fn main() -> KResult<()> {
@@ -45,7 +42,8 @@ fn main() -> KResult<()> {
     packed_tree.print();
 
     // Print the all split packed trees
-    let split_packed_tree = packed_tree.split_at_width::<u8>(3);
+    let split_packed_tree = packed_tree.split_at_width::<u32>(3);
+    split_packed_tree[0].print();
     //for split_tree in &split_packed_tree {
     //    println!("----------------------");
     //    split_tree.print();
@@ -53,12 +51,9 @@ fn main() -> KResult<()> {
 
     // How many unique sequences are stored?
     println!("Span of the tree: {}", tree.span());
-
-    return Ok(());
-
-
-    let gpu = crisprme_cuda::initialize()?;
-
+    println!("----------------------");
+    
+    /*
     // The sequence to test
     let query = vec![1, 3, 2];
     // The compressed bucket of prefix-tries
@@ -79,6 +74,24 @@ fn main() -> KResult<()> {
     let levels_cumsum = vec![0, 1, 3];
     // Offset of DP tables
     let tables = vec![0, 3 * 1, 3 * 3];
+     */
+
+    // Query as u32
+    let query: Vec<u32> = vec![b'A', b'T', b'G'].iter()
+        .map(|x| u32::try_from(*x).unwrap())
+        .collect();
+    
+    // Letters as u32
+    let bucket: Vec<u32> = utils::linearize_memory(&split_packed_tree[0].layers).iter()
+        .map(|l| u32::try_from(*l).unwrap())
+        .collect();
+
+    let parents = utils::linearize_memory(&split_packed_tree[0].offset);
+    let levels = split_packed_tree[0].layer_sizes();
+    let levels_cumsum = split_packed_tree[0].layer_sizes_cumsum();
+    let tables = split_packed_tree[0].dp_table_offsets();
+
+    let gpu = crisprme_cuda::initialize()?;
 
     let mut config = Config::for_num_elems(100);
     config.shared_mem_bytes = memory_of_bucket(&levels, query.len(), bucket.len());
