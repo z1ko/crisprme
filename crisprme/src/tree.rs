@@ -206,9 +206,10 @@ impl Tree<4> {
 
     /// Print how many annotations for each unique sequence
     pub fn print_sequences(&self) {
-        println!("Tree - Sequences:");
+        println!("tree::sequences:");
         let mut seq_stack: Vec<u8> = Vec::with_capacity(self.depth);
         self.root.print_sequences(0, &mut seq_stack);
+        println!();
     }
 
     /// Generate vectors of sequences
@@ -438,6 +439,26 @@ impl LocalPackedTree<u32> {
             seq_set.insert(String::from(seq_string));
         }
         return seq_set;
+    }
+
+    /// Returns singel sequence at leaf index
+    pub fn sequence_at_leaf(&self, index: usize) -> String {
+
+        let mut seq = vec![b'X'; self.depth];
+        let mut i = index as u32;
+
+        seq[self.depth - 1] = self.layers[self.depth - 1][i as usize];
+        let mut offset = self.offset[self.depth - 1][i as usize];
+
+        for l in 1..self.depth {
+            i -= offset;
+
+            seq[self.depth - 1 - l] = self.layers[self.depth - 1 - l][i as usize];
+            offset = self.offset[self.depth - 1 - l][i as usize];
+        }
+
+        return std::str::from_utf8(&seq)
+            .unwrap().to_string();
     }
 }
 
