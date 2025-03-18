@@ -1,46 +1,77 @@
-use std::time::Instant;
-
+#[macro_use] extern crate shrinkwraprs;
+use prettytable::{row, Cell, Row, Table};
+use needleman::needleman::needleman;
 use crisprme_cuda::{autotune, kernel, Config, KResult};
 
-fn memory_of_bucket(levels: &[u32], query_len: usize, bucket_len: usize) -> u32 {
-    let mut result = 0;
-    for l in levels {
-        result += (*l as usize) * query_len;
-    }
-    return (result + bucket_len * 2) as u32;
-}
+mod tree;
+mod utils;
+
+use tree::Tree;
+
+const REF_SIZE: usize = 64;
+const ANCHOR_LEN: usize = 20;
 
 /// Example usage of kernels
 fn main() -> KResult<()> {
+
+    // Available nucleotides
+    let nucleotides: &[u8] = b"ACTG";
+
+    // Create random reference sequence
+    let reference = utils::generate_test_sequence(REF_SIZE, nucleotides, 3666);
+    let reference_windows = utils::split_windows(&reference, ANCHOR_LEN);
+
+    // Iterate over all windows of size ANCHOR_LEN and insert into tree
+    let mut tree: Tree<4> = Tree::new(ANCHOR_LEN);
+    for seq in reference_windows {
+        tree.insert(seq);
+    }
+
+    tree.print_sequences();
+
+    // Packed anchor
+    let packed_tree = tree.pack();
+    //println!("----------------------");
+    //packed_tree.print();
+
+    // Print the all split packed trees
+    let split_packed_tree = packed_tree.split_at_width::<u32>(30);
+    //split_packed_tree[0].print();
+    //for split_tree in &split_packed_tree {
+    //    println!("----------------------");
+    //    split_tree.print();
+    //}
+
+    // How many unique sequences are stored?
+    println!("Span of the tree: {}", tree.span());
+    //println!("----------------------");
+
+    let QUERY = "ACACTTGAACACACACTGAA";
+    assert_eq!(QUERY.len(), ANCHOR_LEN);
+    
+    // Query as u32
+    let query: Vec<u32> = QUERY.chars()
+        .map(|x| u32::try_from(x).unwrap())
+        .collect();
+    
+    // Letters as u32
+    let bucket: Vec<u32> = utils::linearize_memory(&split_packed_tree[0].layers).iter()
+        .map(|l| u32::try_from(*l).unwrap())
+        .collect();
+
+    let parents = utils::linearize_memory(&split_packed_tree[0].offset);
+    let levels = split_packed_tree[0].layer_sizes();
+    let levels_cumsum = split_packed_tree[0].layer_sizes_cumsum();
+    let tables = split_packed_tree[0].dp_table_offsets();
+
     let gpu = crisprme_cuda::initialize()?;
 
-    // The sequence to test
-    let query = vec![1, 3, 2];
-    // The compressed bucket of prefix-tries
-    let bucket = vec![
-        1,      // layer: 0
-        3, 1,   // layer: 1
-        3, 5, 7 // layer: 2
-    ];
-    // The parents at each layer
-    let parents = vec![
-        0,      // layer: 0
-        0, 1,   // layer: 1
-        0, 1, 1 // layer: 2
-    ];
-    // The size of each layer
-    let levels = vec![1, 2, 3];
-    // Cumsum of layer sizes
-    let levels_cumsum = vec![0, 1, 3];
-    // Offset of DP tables
-    let tables = vec![0, 3 * 1, 3 * 3];
-
     let mut config = Config::for_num_elems(100);
-    config.shared_mem_bytes = memory_of_bucket(&levels, query.len(), bucket.len());
+    config.shared_mem_bytes = 48000; // 48K
     println!("shared_mem_bytes: {}", config.shared_mem_bytes);
-    
+
     // Launch work on GPU and get result
-    kernel::mine_global_aligment(&gpu, config,
+    let (aligments, scores) = kernel::mine_global_aligment(&gpu, config,
         query,
         bucket,
         parents, 
@@ -49,29 +80,100 @@ fn main() -> KResult<()> {
         tables
     )?;
 
+    // Show extracted aligment
+
+    let mut table_query = Table::new();
+    table_query.add_row(row!["Query", QUERY]);
+    table_query.printstd();
+
+    let mut table = Table::new();
+    table.add_row(row!["Nth.", "Reference", "Aligment", "Score", "Correct?", "Reference aligment"]);
+    for i in 0..split_packed_tree[0].span() {
+        
+        let seq = split_packed_tree[0].sequence_at_leaf(i);
+        let cigarx: String = aligments.iter().skip(i).step_by(split_packed_tree[0].span())
+            .filter(|x| **x != 0)
+            .map(|e| char::from_u32(*e).unwrap())
+            .rev()
+            .collect();
+
+        // Is it correct?
+        let ag = needleman(QUERY, &seq, 1, -1, -2, false, 'N');
+        let correct = ag.score == scores[i];
+
+        table.add_row(row![i, seq, cigarx, scores[i], correct]);
+    }
+    table.printstd();
     Ok(())
+}
 
-    /*
-    // Let's find the best launch configuration
-    let search = autotune::Search {
-        configs: vec![
-            Config::for_num_elems(1000),
-            Config::for_num_elems(100),
-            Config::for_num_elems(10),
-        ],
-    };
+#[cfg(test)]
+mod tests {
+    use crate::utils::{self};
+    use super::*;
 
-    println!(
-        "Best configuration: {:?}",
-        autotune::benchmark(&gpu, search, |gpu, c| {
-            let input = vec![0.0; 1000];
+    const REF_SIZE: usize = 200;
+    const ANCHOR_LEN: usize = 20;
+    const RNG_SEED: u64 = 3666;
 
-            let start = Instant::now();
-            kernel::example(gpu, c, input).unwrap();
-            start.elapsed()
-        })?
-    );
-    Ok(())
-    */
+    /// Tests that the global aligment kernel returns the correct best scores compared to a reference implementation
+    #[test] fn cuda_global_aligment_scores_correct() -> KResult<()> {
+        let gpu = crisprme_cuda::initialize()?;
 
+        let reference = utils::generate_test_sequence(REF_SIZE, b"ACTG", RNG_SEED);
+        let reference_windows = utils::split_windows(&reference, ANCHOR_LEN);
+
+        // Create prefix tree
+        let mut tree: Tree<4> = Tree::new(ANCHOR_LEN);
+        for seq in &reference_windows {
+            tree.insert(seq);
+        }
+
+        // Create packed prefix tree and split it in a local tree with span 30
+        let packed_tree = tree.pack();
+        let split_packed_trees = packed_tree.split_at_width(30);
+
+        // Test many times with different query sequences
+        for i in 1..=500 {
+            let query_base = utils::generate_test_sequence(
+                ANCHOR_LEN, b"ACTG", RNG_SEED+i);
+
+            // Query as u32
+            let query: Vec<u32> = query_base.iter()
+                .map(|x| u32::try_from(*x).unwrap())
+                .collect();
+
+            // Letters as u32
+            let bucket: Vec<u32> = utils::linearize_memory(&split_packed_trees[0].layers).iter()
+                .map(|l| u32::try_from(*l).unwrap())
+                .collect();
+
+            let parents = utils::linearize_memory(&split_packed_trees[0].offset);
+            let levels = split_packed_trees[0].layer_sizes();
+            let levels_cumsum = split_packed_trees[0].layer_sizes_cumsum();
+            let tables = split_packed_trees[0].dp_table_offsets();
+
+            let mut config = Config::for_num_elems(100);
+            config.shared_mem_bytes = 48000; // 48K
+
+            // Launch work on GPU and get result
+            let (_aligments, scores) = kernel::mine_global_aligment(&gpu, config,
+                query,
+                bucket,
+                parents, 
+                levels,
+                levels_cumsum,
+                tables
+            )?;
+
+            let query_base = std::str::from_utf8(&query_base);
+            for i in 0..split_packed_trees[0].span() {
+                let seq = split_packed_trees[0].sequence_at_leaf(i);
+                let ag = needleman(query_base.unwrap(), &seq, 1, -1, -2, false, 'N');
+                assert_eq!(ag.score, scores[i]);
+            }
+        }
+
+        Ok(())
+    }
 }

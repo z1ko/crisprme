@@ -52,7 +52,15 @@ pub mod kernel {
         levels: Vec<u32>,
         levels_cumsum: Vec<u32>,
         tables: Vec<u32>
-    ) -> KResult<()> {
+    ) -> KResult<(Vec<u32>, Vec<i32>)> {
+
+        // Contains all result aligment cigarx
+        let aligments: Vec<u32> = vec![0; 2 * query.len() * (*levels.last().unwrap() as usize)];
+        let aligments = gpu.htod_copy(aligments)?;
+
+        // Contains all aligment scores
+        let scores: Vec<i32> = vec![0; *levels.last().unwrap() as usize];
+        let scores = gpu.htod_copy(scores)?;
 
         let n = bucket.len();
         let levels = gpu.htod_copy(levels)?;
@@ -64,9 +72,22 @@ pub mod kernel {
 
         let f = gpu.get_func("crisprme", "mine_global_aligment").unwrap();
         unsafe {
-            f.launch(config, (&bucket, &parents, &levels, &levels_cumsum, &tables, &query, n as u32))?;
+            f.launch(config, (
+                &bucket, 
+                &parents, 
+                &levels, 
+                &levels_cumsum, 
+                &tables, 
+                &query, 
+                &aligments, 
+                &scores, 
+                n as u32)
+            )?;
         }
 
-        Ok(())
+        Ok((
+            gpu.dtoh_sync_copy(&aligments)?,
+            gpu.dtoh_sync_copy(&scores)?
+        ))
     }
 }
